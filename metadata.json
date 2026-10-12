@@ -1,0 +1,6 @@
+{
+  "name": "Remote CMD",
+  "description": "Kết nối và chạy lệnh CMD, PowerShell trực tiếp trên máy tính từ Android qua mạng LAN / Wi-Fi",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
