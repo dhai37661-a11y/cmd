@@ -19,6 +19,17 @@ from xml.etree import ElementTree
 PORT = 3000
 APK_PATH = "/workspace/app/build/outputs/apk/debug/app-debug.apk"
 SHOTS_DIR = "/workspace/build/base44-screenshots"
+BUILD_LOG = "/workspace/build/base44-build.log"
+
+
+def read_build_log(limit=4000):
+    """Return the build log only when Gradle reported a failure, else empty."""
+    try:
+        with open(BUILD_LOG, encoding="utf-8", errors="replace") as fh:
+            log = fh.read()
+    except OSError:
+        return ""
+    return log[-limit:] if "BUILD FAILED" in log else ""
 
 PAGE = """<!DOCTYPE html>
 <html lang="vi">
@@ -101,18 +112,21 @@ PAGE = """<!DOCTYPE html>
 
 def render():
     apk_ok = os.path.isfile(APK_PATH)
+    build_failed = bool(read_build_log())
     build_dot, build_status = ("ok", "APK đã build từ mã nguồn hiện tại")
-    if not apk_ok:
-        build_dot = "warn"
-        build_status = "Đang build APK (chưa có output)"
+    if build_failed:
+        build_dot, build_status = "warn", "Build lỗi — kiểm tra log"
+    elif not apk_ok:
+        build_dot, build_status = "warn", "Đang build APK (chưa có output)"
     apk_size = ""
     if apk_ok:
         apk_size = f" &middot; {os.path.getsize(APK_PATH) / (1024 * 1024):.1f} MB"
-    apk_button = (
-        '<a class="btn" href="/app-debug.apk">Tải app-debug.apk' + apk_size + "</a>"
-        if apk_ok
-        else '<a class="btn off">app-debug.apk chưa sẵn sàng</a>'
-    )
+    if build_failed:
+        apk_button = '<a class="btn" href="/build.log">Xem log build</a>'
+    elif apk_ok:
+        apk_button = '<a class="btn" href="/app-debug.apk">Tải app-debug.apk' + apk_size + "</a>"
+    else:
+        apk_button = '<a class="btn off">app-debug.apk chưa sẵn sàng</a>'
 
     test_dot, test_status = "warn", "Unit test chưa chạy"
     results = "/workspace/app/build/test-results/testDebugUnitTest"
@@ -178,6 +192,14 @@ class Handler(BaseHTTPRequestHandler):
                        {"Cache-Control": "no-store"})
         elif path == "/health":
             self._send(200, b"ok", "text/plain")
+        elif path == "/build.log":
+            try:
+                with open(BUILD_LOG, encoding="utf-8", errors="replace") as fh:
+                    log = fh.read()[-20000:]
+            except OSError:
+                log = "no build log yet"
+            self._send(200, log.encode("utf-8"), "text/plain; charset=utf-8",
+                       {"Cache-Control": "no-store"})
         elif path == "/app-debug.apk":
             if not os.path.isfile(APK_PATH):
                 self._send(404, b"APK not built yet", "text/plain")

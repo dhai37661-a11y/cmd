@@ -13,7 +13,7 @@ ENV PATH=${PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/plat
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends unzip curl ca-certificates \
+    && apt-get install -y --no-install-recommends unzip curl ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p ${ANDROID_HOME}/cmdline-tools \
     && curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS}_latest.zip" -o /tmp/cmdline-tools.zip \
