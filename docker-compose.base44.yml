@@ -1,0 +1,84 @@
+# Base44 development stack for "Remote CMD".
+#
+# This project is a native Android app (Kotlin + Jetpack Compose + Room). There is
+# no web frontend: the deliverable is an APK that installs on a phone and talks to
+# a companion HTTP server on the user's PC over LAN. So:
+#
+#   android-build : one-shot job that compiles the debug APK and runs the unit
+#                   tests, straight from the bind-mounted checkout (no baked
+#                   source, so a re-run always reflects current edits).
+#   preview       : tiny status server on host port 3000 - reports build/test
+#                   state, serves the APK, and shows screenshots rendered from
+#                   the real Compose UI.
+name: base44-remote-cmd
+
+services:
+  android-build:
+    image: base44-android-sdk:local
+    build:
+      context: .
+      dockerfile: .base44/android/Dockerfile
+    user: "0:0"                      # sandbox checkout is root-owned; gradle must write app/build
+    working_dir: /workspace
+    environment:
+      - GRADLE_USER_HOME=/gradle-home
+      - BASE44_PREVIEW_MODE       # bare passthrough: sandbox sets 1, unset elsewhere
+      - BASE44_SHOT_DIR=/workspace/build/base44-screenshots
+    volumes:
+      - .:/workspace
+      - gradle-home:/gradle-home
+    # DEBUG builds sign with a local debug keystore, which is gitignored and absent
+    # in a fresh clone - generate it before the first build if needed.
+    command:
+      - sh
+      - -ec
+      - |
+        if [ ! -f debug.keystore ]; then
+          keytool -genkeypair -v -keystore debug.keystore -storepass android \
+            -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 \
+            -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1
+        fi
+        gradle --no-daemon --console=plain assembleDebug testDebugUnitTest
+    restart: "no"
+    healthcheck:
+      disable: true                  # one-shot job: completion is the signal
+
+  preview:
+    image: python:3.12-slim
+    user: "0:0"
+    working_dir: /workspace
+    environment:
+      - BASE44_PREVIEW_MODE
+    volumes:
+      - .:/workspace:ro
+    command: ["python", "/workspace/.base44/preview/server.py"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      android-build:
+        condition: service_started   # serve the status page while the build runs
+    restart: on-failure
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, sys
+          try:
+              ok = urllib.request.urlopen("http://127.0.0.1:3000/health", timeout=3).read() == b"ok"
+          except Exception:
+              ok = False
+          sys.exit(0 if ok else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      base44.project: "Remote CMD"
+      base44.kind: web
+      base44.port: "3000"
+
+volumes:
+  gradle-home:
+    name: base44-gradle-home
